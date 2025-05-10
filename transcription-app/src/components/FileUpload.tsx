@@ -19,10 +19,10 @@ interface FileUploadProps {
   setIsLoading: (loading: boolean) => void;
 }
 
-// Reduce chunk size to 10MB for better handling
-const CHUNK_SIZE = 10 * 1024 * 1024;
-// Increase overlap to 10 seconds for better context
-const OVERLAP_DURATION = 10; // seconds
+// Reduce chunk size to 5MB for more precise handling
+const CHUNK_SIZE = 5 * 1024 * 1024;
+// Increase overlap to 15 seconds for better context
+const OVERLAP_DURATION = 15; // seconds
 
 const FileUpload: React.FC<FileUploadProps> = ({
   onTranscription,
@@ -70,7 +70,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
         response_format: 'text',
         prompt: index === 0 ? "This is the beginning of the audio." : 
                 index === totalChunks - 1 ? "This is the end of the audio." :
-                "This is a continuation of the previous audio segment."
+                "This is a continuation of the previous audio segment. Do not repeat any content from the previous segment."
       });
       return response;
     } catch (error) {
@@ -82,32 +82,49 @@ const FileUpload: React.FC<FileUploadProps> = ({
   const mergeTranscriptions = (transcriptions: string[]): string => {
     return transcriptions
       .map((text, index) => {
-        // Remove any repeated phrases at the start/end of chunks
-        if (index > 0) {
-          const prevText = transcriptions[index - 1];
-          // Look for the last complete sentence in the previous chunk
-          const lastSentences = prevText.split(/[.!?]/).filter(s => s.trim().length > 0);
-          const lastSentence = lastSentences[lastSentences.length - 1]?.trim() || '';
+        if (index === 0) return text.trim();
+
+        const prevText = transcriptions[index - 1];
+        const currentText = text.trim();
+        
+        // Find the last complete sentence in the previous chunk
+        const lastSentences = prevText.split(/[.!?]/).filter(s => s.trim().length > 0);
+        const lastSentence = lastSentences[lastSentences.length - 1]?.trim() || '';
+        
+        if (!lastSentence) return currentText;
+
+        // Find potential overlap points
+        const overlapPoints = findOverlapPoints(lastSentence, currentText);
+        
+        if (overlapPoints.length > 0) {
+          // Use the longest overlap point to ensure we don't cut in the middle of a sentence
+          const bestOverlap = overlapPoints.reduce((a, b) => a.length > b.length ? a : b);
+          const overlapIndex = currentText.toLowerCase().indexOf(bestOverlap.toLowerCase());
           
-          if (lastSentence) {
-            // Check for the last sentence in the current chunk
-            const currentTextLower = text.toLowerCase();
-            const lastSentenceLower = lastSentence.toLowerCase();
-            
-            if (currentTextLower.includes(lastSentenceLower)) {
-              // Find the position after the last sentence
-              const position = currentTextLower.indexOf(lastSentenceLower) + lastSentence.length;
-              // Only remove if it's at the start of the text
-              if (position < text.length / 2) {
-                text = text.substring(position);
-              }
-            }
+          if (overlapIndex >= 0 && overlapIndex < currentText.length / 2) {
+            return currentText.substring(overlapIndex + bestOverlap.length).trim();
           }
         }
-        return text.trim();
+        
+        return currentText;
       })
       .filter(text => text.length > 0)
       .join('\n\n');
+  };
+
+  const findOverlapPoints = (lastSentence: string, currentText: string): string[] => {
+    const overlapPoints: string[] = [];
+    const words = lastSentence.split(/\s+/);
+    
+    // Look for overlapping phrases of different lengths
+    for (let i = words.length; i >= 3; i--) {
+      const phrase = words.slice(-i).join(' ');
+      if (currentText.toLowerCase().includes(phrase.toLowerCase())) {
+        overlapPoints.push(phrase);
+      }
+    }
+    
+    return overlapPoints;
   };
 
   const onDrop = useCallback(
