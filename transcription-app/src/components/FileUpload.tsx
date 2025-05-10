@@ -225,9 +225,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
           size="lg"
           bg="white"
         />
-        <FormHelperText>
-          Your API key should start with 'sk-' and be at least 51 characters long
-        </FormHelperText>
       </FormControl>
       <Box
         {...getRootProps()}
