@@ -70,6 +70,107 @@ const NotesProcessor: React.FC<NotesProcessorProps> = ({
     }
   };
 
+  // Helper function to process a single chunk
+  const processChunk = async (
+    chunk: string,
+    index: number,
+    totalChunks: number,
+    openai: OpenAI
+  ): Promise<string> => {
+    setStatus(`Processing chunk ${index + 1} of ${totalChunks}...`);
+    setProgress((index / totalChunks) * 30);
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You are a highly skilled medical note organizer. Your task is to process this text chunk while preserving all medical information and organizing it professionally."
+        },
+        {
+          role: "user",
+          content: `Process this chunk of text following these guidelines:
+1. Organize information in clear bullet points
+2. Group related items together
+3. Fix any grammar, spelling, or formatting issues
+4. Preserve ALL information and nuances - do not remove or summarize unless explicitly redundant
+5. Use clear headings and subheadings where helpful
+6. Maintain professional medical terminology
+7. Keep the output suitable for formal documentation
+
+Text to process:
+
+${chunk}`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 500
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No content received from API');
+    }
+    return content;
+  };
+
+  // Helper function to process chunks in parallel with concurrency control
+  const processChunksInParallel = async (
+    chunks: string[],
+    openai: OpenAI,
+    concurrencyLimit: number = 10
+  ): Promise<string[]> => {
+    const results: string[] = new Array(chunks.length);
+    let currentIndex = 0;
+    let activePromises = 0;
+    let currentMinuteTokens = 0;
+    const TOKEN_LIMIT_PER_MINUTE = 8000;
+    const TOKEN_BUFFER = 1000; // Buffer to prevent hitting limit exactly
+
+    const processNextChunk = async (): Promise<void> => {
+      if (currentIndex >= chunks.length) return;
+
+      const index = currentIndex++;
+      const chunk = chunks[index];
+      const estimatedTokens = estimateTokens(chunk);
+
+      // More conservative token limit check for higher concurrency
+      if (currentMinuteTokens + estimatedTokens > (TOKEN_LIMIT_PER_MINUTE - TOKEN_BUFFER)) {
+        console.log('Token limit approaching, waiting for 60 seconds...');
+        setStatus('Token limit approaching, waiting for 60 seconds...');
+        await wait(60000);
+        currentMinuteTokens = 0;
+      }
+
+      try {
+        const result = await processChunk(chunk, index, chunks.length, openai);
+        results[index] = result;
+        currentMinuteTokens += estimatedTokens;
+        console.log(`Successfully processed chunk ${index + 1}`);
+      } catch (error) {
+        console.error(`Error processing chunk ${index + 1}:`, error);
+        throw error;
+      }
+
+      activePromises--;
+      if (currentIndex < chunks.length) {
+        activePromises++;
+        await processNextChunk();
+      }
+    };
+
+    // Start initial batch of promises
+    const initialPromises = Array(Math.min(concurrencyLimit, chunks.length))
+      .fill(null)
+      .map(() => {
+        activePromises++;
+        return processNextChunk();
+      });
+
+    await Promise.all(initialPromises);
+    return results;
+  };
+
   const processNotes = async (rawNotes: string) => {
     if (!apiKey) {
       setError('Please enter your OpenAI API key');
@@ -87,84 +188,29 @@ const NotesProcessor: React.FC<NotesProcessorProps> = ({
         dangerouslyAllowBrowser: true
       });
 
-      // Split text into very small chunks (approximately 300 tokens each)
+      // Split text into chunks
       const chunks = splitTextIntoChunks(rawNotes, 300);
       console.log(`Split text into ${chunks.length} chunks`);
-      setStatus(`Processing ${chunks.length} chunks...`);
-      
-      let processedChunks: string[] = [];
-      let currentMinuteTokens = 0;
-      const TOKEN_LIMIT_PER_MINUTE = 8000; // Conservative limit below the 10k cap
+      setStatus(`Processing ${chunks.length} chunks in parallel (10 at a time)...`);
 
-      // Process each chunk with token tracking
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const estimatedTokens = estimateTokens(chunk);
-        
-        setProgress((i / chunks.length) * 30); // First 30% of progress
-        setStatus(`Processing chunk ${i + 1} of ${chunks.length}...`);
-        
-        if (currentMinuteTokens + estimatedTokens > TOKEN_LIMIT_PER_MINUTE) {
-          console.log('Token limit approaching, waiting for 60 seconds...');
-          setStatus('Token limit approaching, waiting for 60 seconds...');
-          await wait(60000); // Wait for a full minute
-          currentMinuteTokens = 0;
-        }
-
-        const processedChunk = await retryWithBackoff(async () => {
-          console.log(`Processing chunk ${i + 1}...`);
-          const response = await openai.chat.completions.create({
-            model: "gpt-4",
-            messages: [
-              {
-                role: "system",
-                content: "You are a highly skilled assistant trained to clean and organize text. Your task is to process this small chunk of text while preserving its meaning and medical terminology."
-              },
-              {
-                role: "user",
-                content: `Process this chunk of text:
-1. Remove any duplicates
-2. Clean up formatting
-3. Preserve all medical terminology and measurements
-4. Maintain the original meaning
-
-Text to process:
-
-${chunk}`
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 200 // Very conservative token limit
-          });
-          return response;
-        });
-
-        const content = processedChunk.choices[0]?.message?.content;
-        if (!content) {
-          throw new Error('No content received from API');
-        }
-        processedChunks.push(content);
-        currentMinuteTokens += estimatedTokens;
-        console.log(`Successfully processed chunk ${i + 1}`);
-
-        await wait(3000);
-      }
+      // Process chunks in parallel with increased concurrency
+      const processedChunks = await processChunksInParallel(chunks, openai, 10);
 
       setStatus('Combining processed chunks...');
       console.log('Starting chunk combination...');
 
-      // Combine chunks in smaller groups to stay within token limits
+      // Combine chunks in smaller groups
       const combinedChunks: string[] = [];
       let currentGroup: string[] = [];
       let currentGroupTokens = 0;
-      const totalGroups = Math.ceil(processedChunks.length / 5); // Assuming ~5 chunks per group
+      const totalGroups = Math.ceil(processedChunks.length / 5);
       let currentGroupIndex = 0;
 
       for (let i = 0; i < processedChunks.length; i++) {
         const chunk = processedChunks[i];
         const chunkTokens = estimateTokens(chunk);
         
-        setProgress(30 + (currentGroupIndex / totalGroups) * 30); // Next 30% of progress
+        setProgress(30 + (currentGroupIndex / totalGroups) * 30);
         setStatus(`Combining chunks into sections (${currentGroupIndex + 1}/${totalGroups})...`);
 
         if (currentGroupTokens + chunkTokens > 2000) {
@@ -175,17 +221,26 @@ ${chunk}`
               messages: [
                 {
                   role: "system",
-                  content: "You are a highly skilled assistant trained to combine text chunks into a coherent document."
+                  content: "You are a highly skilled medical note organizer. Your task is to combine these chunks into a coherent section while maintaining professional organization and preserving all details."
                 },
                 {
                   role: "user",
-                  content: `Combine these chunks into a coherent section:
+                  content: `Combine these chunks into a coherent section following these guidelines:
+1. Organize information in clear bullet points
+2. Group related items together
+3. Fix any grammar, spelling, or formatting issues
+4. Preserve ALL information and nuances - do not add, remove or summarize unless explicitly redundant
+5. Use clear headings and subheadings where helpful
+6. Maintain professional medical terminology
+7. Keep the output suitable for formal documentation
+
+Chunks to combine:
 
 ${currentGroup.join('\n\n')}`
                 }
               ],
               temperature: 0.3,
-              max_tokens: 400
+              max_tokens: 500
             });
           });
 
@@ -215,17 +270,26 @@ ${currentGroup.join('\n\n')}`
             messages: [
               {
                 role: "system",
-                content: "You are a highly skilled assistant trained to combine text chunks into a coherent document."
+                content: "You are a highly skilled medical note organizer. Your task is to combine these chunks into a coherent section while maintaining professional organization and preserving all details."
               },
               {
                 role: "user",
-                content: `Combine these chunks into a coherent section:
+                content: `Combine these chunks into a coherent section following these guidelines:
+1. Organize information in clear bullet points
+2. Group related items together
+3. Fix any grammar, spelling, or formatting issues
+4. Preserve ALL information and nuances - do not add, remove or summarize unless explicitly redundant
+5. Use clear headings and subheadings where helpful
+6. Maintain professional medical terminology
+7. Keep the output suitable for formal documentation
+
+Chunks to combine:
 
 ${currentGroup.join('\n\n')}`
               }
             ],
             temperature: 0.3,
-            max_tokens: 400
+            max_tokens: 500
           });
         });
 
@@ -240,23 +304,28 @@ ${currentGroup.join('\n\n')}`
       setProgress(90);
       console.log('Starting final combination...');
 
-      // Final combination of all processed sections
+      // Final combination
       const finalResponse = await retryWithBackoff(async () => {
         return await openai.chat.completions.create({
           model: "gpt-4",
           messages: [
             {
               role: "system",
-              content: "You are a highly skilled assistant trained to create a final, well-organized document from processed sections."
+              content: "You are a highly skilled medical note organizer. Your task is to create a final, well-organized document from these processed sections while maintaining professional standards and preserving all details."
             },
             {
               role: "user",
-              content: `Create a final document from these processed sections:
-1. Remove any remaining duplicates
-2. Ensure smooth transitions between sections
-3. Maintain consistent formatting
-4. Preserve all medical terminology
-5. Organize content logically
+              content: `Create a final document from these processed sections following these guidelines:
+1. Organize information in clear bullet points
+2. Group related items together
+3. Fix any grammar, spelling, or formatting issues
+4. Preserve ALL information and nuances - do not add, remove or summarize unless explicitly redundant
+5. Use clear headings and subheadings where helpful
+6. Maintain professional medical terminology
+7. Keep the output suitable for formal documentation
+8. Ensure smooth transitions between sections
+9. Remove any remaining duplicates
+10. Maintain consistent formatting throughout
 
 Sections to combine:
 
