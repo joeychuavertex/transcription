@@ -4,11 +4,8 @@ import {
   Box,
   VStack,
   Text,
-  Input,
   Spinner,
   useToast,
-  FormControl,
-  FormHelperText,
   Progress,
 } from '@chakra-ui/react';
 import OpenAI from 'openai';
@@ -17,6 +14,7 @@ interface FileUploadProps {
   onTranscription: (text: string) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  apiKey: string;
 }
 
 // Reduce chunk size to 5MB for more precise handling
@@ -28,22 +26,10 @@ const FileUpload: React.FC<FileUploadProps> = ({
   onTranscription,
   isLoading,
   setIsLoading,
+  apiKey,
 }) => {
-  const [apiKey, setApiKey] = useState('');
-  const [isValidKey, setIsValidKey] = useState(true);
   const [progress, setProgress] = useState(0);
   const toast = useToast();
-
-  const validateApiKey = (key: string) => {
-    // OpenAI API keys start with 'sk-' and are typically 51 characters long
-    return key.startsWith('sk-') && key.length >= 51;
-  };
-
-  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newKey = e.target.value;
-    setApiKey(newKey);
-    setIsValidKey(newKey === '' || validateApiKey(newKey));
-  };
 
   const splitAudioFile = async (file: File): Promise<File[]> => {
     const chunks: File[] = [];
@@ -140,17 +126,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
         return;
       }
 
-      if (!validateApiKey(apiKey)) {
-        toast({
-          title: 'Invalid API Key',
-          description: 'Please enter a valid OpenAI API key (starts with sk-)',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-        return;
-      }
-
       const file = acceptedFiles[0];
       if (!file) return;
 
@@ -233,16 +208,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   return (
     <VStack gap={4} align="stretch">
-      <FormControl isInvalid={!isValidKey}>
-        <Input
-          placeholder="Enter your OpenAI API key"
-          value={apiKey}
-          onChange={handleApiKeyChange}
-          type="password"
-          size="lg"
-          bg="white"
-        />
-      </FormControl>
       <Box
         {...getRootProps()}
         p={10}
