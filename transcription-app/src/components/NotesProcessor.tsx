@@ -85,25 +85,26 @@ const NotesProcessor: React.FC<NotesProcessorProps> = ({
       messages: [
         {
           role: "system",
-          content: "You are a highly skilled medical note organizer. Your task is to process this text chunk while preserving all medical information and organizing it professionally."
+          content: "You are a highly skilled medical note organizer. Your primary task is to preserve the EXACT original content while organizing it professionally. Do not modify, interpret, or change the meaning of any information."
         },
         {
           role: "user",
-          content: `Process this chunk of text following these guidelines:
-1. Organize information in clear bullet points
-2. Group related items together
-3. Fix any grammar, spelling, or formatting issues
-4. Preserve ALL information and nuances - do not remove or summarize unless explicitly redundant
-5. Use clear headings and subheadings where helpful
-6. Maintain professional medical terminology
-7. Keep the output suitable for formal documentation
+          content: `Process this chunk of text following these strict guidelines:
+1. Preserve the EXACT original wording and meaning - do not rephrase or interpret
+2. Only organize into bullet points if it helps clarity - maintain original sentences if they are clear
+3. Fix ONLY obvious spelling errors - do not change any medical terms or measurements
+4. Do not add, remove, or summarize ANY information unless it is an exact duplicate
+5. Use headings only to group existing content - do not add new categories
+6. Keep all original medical terminology exactly as written
+7. Maintain the original tone and style of the notes
+8. If uncertain about any change, keep the original text
 
 Text to process:
 
 ${chunk}`
         }
       ],
-      temperature: 0.3,
+      temperature: 0.1, // Reduced temperature for more conservative output
       max_tokens: 500
     });
 
@@ -221,25 +222,26 @@ ${chunk}`
               messages: [
                 {
                   role: "system",
-                  content: "You are a highly skilled medical note organizer. Your task is to combine these chunks into a coherent section while maintaining professional organization and preserving all details."
+                  content: "You are a highly skilled medical note organizer. Your primary task is to preserve the EXACT original content while organizing it professionally. Do not modify, interpret, or change the meaning of any information."
                 },
                 {
                   role: "user",
-                  content: `Combine these chunks into a coherent section following these guidelines:
-1. Organize information in clear bullet points
-2. Group related items together
-3. Fix any grammar, spelling, or formatting issues
-4. Preserve ALL information and nuances - do not add, remove or summarize unless explicitly redundant
-5. Use clear headings and subheadings where helpful
-6. Maintain professional medical terminology
-7. Keep the output suitable for formal documentation
+                  content: `Combine these chunks following these strict guidelines:
+1. Preserve the EXACT original wording and meaning - do not rephrase or interpret
+2. Only organize into bullet points if it helps clarity - maintain original sentences if they are clear
+3. Fix ONLY obvious spelling errors - do not change any medical terms or measurements
+4. Do not add, remove, or summarize ANY information unless it is an exact duplicate
+5. Use headings only to group existing content - do not add new categories
+6. Keep all original medical terminology exactly as written
+7. Maintain the original tone and style of the notes
+8. If uncertain about any change, keep the original text
 
 Chunks to combine:
 
 ${currentGroup.join('\n\n')}`
                 }
               ],
-              temperature: 0.3,
+              temperature: 0.1,
               max_tokens: 500
             });
           });
@@ -270,25 +272,26 @@ ${currentGroup.join('\n\n')}`
             messages: [
               {
                 role: "system",
-                content: "You are a highly skilled medical note organizer. Your task is to combine these chunks into a coherent section while maintaining professional organization and preserving all details."
+                content: "You are a highly skilled medical note organizer. Your primary task is to preserve the EXACT original content while organizing it professionally. Do not modify, interpret, or change the meaning of any information."
               },
               {
                 role: "user",
-                content: `Combine these chunks into a coherent section following these guidelines:
-1. Organize information in clear bullet points
-2. Group related items together
-3. Fix any grammar, spelling, or formatting issues
-4. Preserve ALL information and nuances - do not add, remove or summarize unless explicitly redundant
-5. Use clear headings and subheadings where helpful
-6. Maintain professional medical terminology
-7. Keep the output suitable for formal documentation
+                content: `Combine these chunks following these strict guidelines:
+1. Preserve the EXACT original wording and meaning - do not rephrase or interpret
+2. Only organize into bullet points if it helps clarity - maintain original sentences if they are clear
+3. Fix ONLY obvious spelling errors - do not change any medical terms or measurements
+4. Do not add, remove, or summarize ANY information unless it is an exact duplicate
+5. Use headings only to group existing content - do not add new categories
+6. Keep all original medical terminology exactly as written
+7. Maintain the original tone and style of the notes
+8. If uncertain about any change, keep the original text
 
 Chunks to combine:
 
 ${currentGroup.join('\n\n')}`
               }
             ],
-            temperature: 0.3,
+            temperature: 0.1,
             max_tokens: 500
           });
         });
@@ -311,28 +314,28 @@ ${currentGroup.join('\n\n')}`
           messages: [
             {
               role: "system",
-              content: "You are a highly skilled medical note organizer. Your task is to create a final, well-organized document from these processed sections while maintaining professional standards and preserving all details."
+              content: "You are a highly skilled medical note organizer. Your primary task is to preserve the EXACT original content while organizing it professionally. Do not modify, interpret, or change the meaning of any information."
             },
             {
               role: "user",
-              content: `Create a final document from these processed sections following these guidelines:
-1. Organize information in clear bullet points
-2. Group related items together
-3. Fix any grammar, spelling, or formatting issues
-4. Preserve ALL information and nuances - do not add, remove or summarize unless explicitly redundant
-5. Use clear headings and subheadings where helpful
-6. Maintain professional medical terminology
-7. Keep the output suitable for formal documentation
-8. Ensure smooth transitions between sections
-9. Remove any remaining duplicates
-10. Maintain consistent formatting throughout
+              content: `Create the final document following these strict guidelines:
+1. Preserve the EXACT original wording and meaning - do not rephrase or interpret
+2. Only organize into bullet points if it helps clarity - maintain original sentences if they are clear
+3. Fix ONLY obvious spelling errors - do not change any medical terms or measurements
+4. Do not add, remove, or summarize ANY information unless it is an exact duplicate
+5. Use headings only to group existing content - do not add new categories
+6. Keep all original medical terminology exactly as written
+7. Maintain the original tone and style of the notes
+8. If uncertain about any change, keep the original text
+9. Ensure smooth transitions between sections while preserving original content
+10. Remove only exact duplicates, not similar information
 
 Sections to combine:
 
 ${combinedChunks.join('\n\n')}`
             }
           ],
-          temperature: 0.3,
+          temperature: 0.1,
           max_tokens: 600
         });
       });
